@@ -33,6 +33,8 @@ This analyzer was successfully utilized to verify the performance of [NAM-Oversa
 | NAM OS v1.5.2 (8x, Minimum Phase) | -52.78 dB | Aliasing lines are suppressed into the background. |
 | NAM OS v1.5.2 (16x, Minimum Phase) | **-62.10 dB** | Further improvement and suppression compared to 8x. |
 
+![NAM-Oversampler Verification Result](oversampler_comparison.jpg)
+
 ---
 
 ## 📚 Acknowledgments & References
