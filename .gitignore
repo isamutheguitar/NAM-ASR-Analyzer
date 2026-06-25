@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Database
+asr_results.db
+*.db
+*.sqlite3
+
+# OS / IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
