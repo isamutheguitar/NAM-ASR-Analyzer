@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技術検証：エイリアスノイズの可視化とNAM A2の真実 | Empirical Verification of Aliasing Noise in NAM A2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Noto+Sans+JP:wght@300;400;700&display=swap');
+        
+        :root {
+            --bg-main: #fcfaf7;
+            --accent-primary: #2c3e50;
+            --accent-secondary: #e67e22;
+            --text-main: #34495e;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        @media (max-width: 640px) {
+            .chart-container { height: 280px; }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <nav class="sticky top-0 z-50 glass-card border-b py-4">
+        <div class="container mx-auto px-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-slate-800 lang-jp">ASR アナライザー実測レポート</h1>
+                <h1 class="text-xl font-bold tracking-tight text-slate-800 lang-en hidden">ASR Analyzer Interactive Report</h1>
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-widest lang-jp">デジタルオーディオ実測検証</div>
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-widest lang-en hidden">Digital Audio Verification</div>
+            </div>
+            
+            <!-- Language switcher buttons -->
+            <div class="flex items-center space-x-1 bg-slate-100/80 rounded-lg p-1 border border-slate-200">
+                <button onclick="setLanguage('jp')" id="lang-btn-jp" class="px-3 py-1 text-xs font-bold rounded-md transition-all bg-white text-slate-800 shadow-sm">JP</button>
+                <button onclick="setLanguage('en')" id="lang-btn-en" class="px-3 py-1 text-xs font-bold rounded-md transition-all text-slate-500 hover:text-slate-800">EN</button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="relative py-16 px-6 overflow-hidden">
+        <div class="container mx-auto max-w-4xl text-center relative z-10">
+            <span class="inline-block px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full mb-4">DAFx 2025 Methodology</span>
+            
+            <h2 class="text-4xl md:text-5xl font-extrabold text-slate-900 mb-6 leading-tight lang-jp">
+                NAM A2における<br>「エイリアスノイズ」の実測検証
+            </h2>
+            <h2 class="text-4xl md:text-5xl font-extrabold text-slate-900 mb-6 leading-tight lang-en hidden">
+                Empirical Verification of<br>"Aliasing Noise" in NAM A2
+            </h2>
+            
+            <p class="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed lang-jp">
+                最新アルゴリズムは本当に「低ノイズ」なのか。<br>
+                RAT単体プロファイルと5150フルリグの比較、さらに「NAM-Oversampler」を用いた特効薬の実測データを高精度なスクショ画像とともに可視化します。
+            </p>
+            <p class="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed lang-en hidden">
+                Is the latest algorithm genuinely "low noise"?<br>
+                We visualize the comparison between the standalone RAT pedal profile and the 5150 full rig, alongside empirical data utilizing the "NAM-Oversampler" fix, backed by high-resolution screenshots.
+            </p>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 max-w-5xl space-y-12 pb-24">
+        
+        <section id="intro" class="p-8 rounded-3xl glass-card">
+            <h3 class="text-2xl font-bold mb-4 flex items-center">
+                <span class="w-8 h-8 bg-slate-800 text-white rounded-full flex items-center justify-center mr-3 text-sm">01</span>
+                <span class="lang-jp">ASR (Aliasing-to-Signal Ratio) の定義</span>
+                <span class="lang-en hidden">Definition of ASR (Aliasing-to-Signal Ratio)</span>
+            </h3>
+            <div class="grid md:grid-cols-2 gap-8 items-start">
+                <div class="space-y-4">
+                    <p class="text-slate-700 text-sm lang-jp">
+                        本検証では、DAFx 2025論文に基づき、<b>ASR</b>を指標に採用しました。これは、歪みによって発生した「本来の（折り返しのない）出力信号エネルギー」に対する「折り返し雑音（エイリアシング）エネルギー」の比率をデシベル(dB)で算出したものです。
+                    </p>
+                    <p class="text-slate-700 text-sm lang-en hidden">
+                        In this verification, we adopt the **ASR** indicator based on the DAFx 2025 paper. It calculates the ratio of folded-back aliasing energy to the "intended, non-aliased output signal energy" generated by non-linear distortion, expressed in decibels (dB).
+                    </p>
+                    <div class="p-4 bg-slate-100 rounded-xl font-mono text-xs border-l-4 border-slate-400">
+                        ASR [dB] = 10 * log10( P_aliasing / P_signal )
+                    </div>
+                </div>
+                <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                    <h4 class="font-bold text-slate-900 mb-3 text-sm uppercase italic lang-jp">指標の意味:</h4>
+                    <h4 class="font-bold text-slate-900 mb-3 text-sm uppercase italic lang-en hidden">What it means:</h4>
+                    <ul class="space-y-3">
+                        <li class="flex items-start">
+                            <div class="w-4 h-4 rounded-full bg-blue-500 mt-1 mr-3 flex-shrink-0"></div>
+                            <p class="text-xs lang-jp"><b>Signal (信号):</b> 基本波＋本来発生すべき正常な倍音成分（出力合計値）</p>
+                            <p class="text-xs lang-en hidden"><b>Signal:</b> Fundamental frequency + intended natural harmonic components (total output)</p>
+                        </li>
+                        <li class="flex items-start">
+                            <div class="w-4 h-4 rounded-full bg-red-500 mt-1 mr-3 flex-shrink-0"></div>
+                            <p class="text-xs lang-jp"><b>Aliasing (折り返し雑音):</b> ナイキスト境界で折り返した、非調和なデジタルノイズ</p>
+                            <p class="text-xs lang-en hidden"><b>Aliasing:</b> Inharmonic digital noise folded back at the Nyquist boundary</p>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="dashboard" class="p-8 rounded-3xl bg-white shadow-xl shadow-slate-200/50">
+            <div class="mb-8 text-center">
+                <h3 class="text-2xl font-bold mb-2 lang-jp">検証データ・ダッシュボード（実測値反映）</h3>
+                <h3 class="text-2xl font-bold mb-2 lang-en hidden">Verification Data Dashboard (Empirical Values)</h3>
+                
+                <p class="text-slate-500 text-sm lang-jp">ターゲットを切り替えて、アルゴリズムやオーバーサンプリングごとのASRの変化を確認してください</p>
+                <p class="text-slate-500 text-sm lang-en hidden">Switch targets to verify the changes in ASR across different algorithms and oversampling factors</p>
+            </div>
+
+            <div class="flex flex-wrap justify-center gap-4 mb-8">
+                <button onclick="switchTarget('rat')" id="btn-rat" class="px-6 py-2 rounded-full font-bold transition-all border-2 border-slate-800 bg-slate-800 text-white">
+                    <span class="lang-jp">RAT (ペダル単体)</span>
+                    <span class="lang-en hidden">RAT (Pedal Solo)</span>
+                </button>
+                <button onclick="switchTarget('5150')" id="btn-5150" class="px-6 py-2 rounded-full font-bold transition-all border-2 border-slate-200 text-slate-500 hover:border-slate-800">
+                    <span class="lang-jp">5150 (フルリグ)</span>
+                    <span class="lang-en hidden">5150 (Full Rig)</span>
+                </button>
+            </div>
+
+            <div class="grid lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="chart-container bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                        <canvas id="asrChart"></canvas>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div id="insight-card" class="h-full p-6 bg-slate-900 text-white rounded-2xl flex flex-col justify-center">
+                        <h4 class="text-orange-400 font-bold mb-2 uppercase tracking-tighter text-xs lang-jp">分析インサイト</h4>
+                        <h4 class="text-orange-400 font-bold mb-2 uppercase tracking-tighter text-xs lang-en hidden">Analysis Insight</h4>
+                        
+                        <p id="insight-text" class="text-sm leading-relaxed">
+                            RATのようなペダル単体では、キャビによる高域遮断がないため、A2 Fullが発生させる大量の高周波エネルギーが直接ナイキスト天井に激突し、深刻なエイリアスを招いています。
+                        </p>
+                        
+                        <div class="mt-6 pt-6 border-t border-slate-700">
+                            <div class="flex justify-between items-end">
+                                <span class="text-xs text-slate-400 lang-jp">選択中の最悪 ASR</span>
+                                <span class="text-xs text-slate-400 lang-en hidden">Worst ASR of Selected</span>
+                                <span id="worst-val" class="text-2xl font-bold text-orange-500">-24.49 dB</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-10 grid md:grid-cols-4 gap-4" id="metric-grid">
+                <div class="p-4 rounded-xl border border-slate-100 bg-slate-50">
+                    <span class="text-xs font-bold text-slate-400">A1 (Standard)</span>
+                    <div id="val-a1" class="text-xl font-bold text-slate-800">-62.26 dB</div>
+                    <div class="text-[10px] text-slate-500 mt-1 lang-jp">圧倒的にクリーンな特性。</div>
+                    <div class="text-[10px] text-slate-500 mt-1 lang-en hidden">Extremely clean profile.</div>
+                </div>
+                <div class="p-4 rounded-xl border border-orange-200 bg-orange-50">
+                    <span class="text-xs font-bold text-orange-400">A2 Full (OS: OFF)</span>
+                    <div id="val-a2f" class="text-xl font-bold text-slate-800">-24.49 dB</div>
+                    <div class="text-[10px] text-orange-600 mt-1 lang-jp">折り返しノイズが顕著。</div>
+                    <div class="text-[10px] text-orange-600 mt-1 lang-en hidden">Significant aliasing noise.</div>
+                </div>
+                <div class="p-4 rounded-xl border border-slate-100 bg-slate-50">
+                    <span class="text-xs font-bold text-slate-400">A2 Lite (Slim=1)</span>
+                    <div id="val-a2l" class="text-xl font-bold text-slate-800">-28.86 dB</div>
+                    <div class="text-[10px] text-slate-500 mt-1 lang-jp">Fullより3-5dBノイズが少ない。</div>
+                    <div class="text-[10px] text-slate-500 mt-1 lang-en hidden">3-5dB cleaner than Full.</div>
+                </div>
+                <div id="metric-os-card" class="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
+                    <span class="text-xs font-bold text-emerald-600">A2 (Oversampler 16x)</span>
+                    <div id="val-os" class="text-xl font-bold text-emerald-800">-62.10 dB</div>
+                    <div class="text-[10px] text-emerald-600 mt-1 lang-jp">A1と同等まで完全に浄化。</div>
+                    <div class="text-[10px] text-emerald-600 mt-1 lang-en hidden">Completely cleaned to match A1.</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="spectrogram-viewer" class="p-8 rounded-3xl bg-slate-900 text-white shadow-xl">
+            <div class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-2xl font-bold flex items-center gap-2">
+                        <span class="px-2 py-0.5 bg-orange-500 text-white text-xs rounded uppercase font-mono">Actual Data</span>
+                        <span class="lang-jp">実測アナライザー・スクリーンショット比較</span>
+                        <span class="lang-en hidden">Raw Spectrogram & Measurement Screenshots</span>
+                    </h3>
+                    <p class="text-slate-400 text-xs mt-1 lang-jp">測定器 ASR Analyzer の出力した生画像データを切り替えて視覚的にノイズの密度をチェックできます</p>
+                    <p class="text-slate-400 text-xs mt-1 lang-en hidden">Toggle between raw data images captured from the ASR Analyzer to visually inspect aliasing density.</p>
+                </div>
+                
+                <div id="viewer-controls" class="flex flex-wrap gap-2 animate-fadeIn">
+                    <!-- Buttons dynamically generated in JS -->
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-12 gap-6 items-center">
+                <div class="md:col-span-8 bg-black rounded-2xl overflow-hidden border border-slate-800 flex justify-center items-center min-h-[300px] relative">
+                    <img id="viewer-img" src="" alt="ASR Analyzer Screenshot" class="w-full h-auto max-h-[500px] object-contain transition-opacity duration-300" onerror="this.src='https://placehold.co/800x600/1e293b/94a3b8?text=Image+Not+Found+or+Loading...';">
+                    <div id="viewer-loading" class="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200">
+                        <span class="text-sm font-bold lang-jp">スクリーンショットを読み込み中...</span>
+                        <span class="text-sm font-bold lang-en hidden">Loading Screenshot...</span>
+                    </div>
+                </div>
+                <div class="md:col-span-4 space-y-4">
+                    <div class="p-5 bg-slate-800/50 rounded-2xl border border-slate-700/50">
+                        <h4 class="text-orange-400 font-bold text-xs uppercase tracking-wider mb-1 lang-jp">選択中の画像解説</h4>
+                        <h4 class="text-orange-400 font-bold text-xs uppercase tracking-wider mb-1 lang-en hidden">Active Description</h4>
+                        <h5 id="viewer-title" class="text-lg font-bold text-white mb-2">-</h5>
+                        <p id="viewer-desc" class="text-xs text-slate-300 leading-relaxed">-</p>
+                    </div>
+                    <div class="p-5 bg-slate-800/20 rounded-2xl border border-slate-800 flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
+                        <span class="text-[11px] text-slate-400">
+                            <span class="lang-jp">実測ログ：ファイル名</span>
+                            <span class="lang-en hidden">Empirical Log: File</span>
+                            <code id="viewer-filename" class="bg-slate-800 px-1.5 py-0.5 rounded text-orange-300 text-[10px] ml-1">-</code>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="mechanism" class="space-y-8">
+            <div class="text-center">
+                <h3 class="text-2xl font-bold lang-jp">検証結果から見る2つの物理メカニズム</h3>
+                <h3 class="text-2xl font-bold lang-en hidden">Two Key Physical Mechanisms of Aliasing</h3>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="p-8 rounded-3xl glass-card flex flex-col">
+                    <h4 class="text-xl font-bold mb-4 text-slate-800 italic lang-jp">1. 高域エネルギーの露出</h4>
+                    <h4 class="text-xl font-bold mb-4 text-slate-800 italic lang-en hidden">1. Exposure of High-Frequency Energy</h4>
+                    
+                    <p class="text-slate-600 text-sm mb-6 flex-grow lang-jp">
+                        フルリグは「アンプ＋キャビ」。キャビ(IR)が高域を強力にロールオフするため、エイリアスが境界に届く前に消えます。ペダル単体は境界までフルエネルギーが届くため、A2の「高精度な生成」が仇となり、巨大なエイリアスを可聴域に戻します。
+                    </p>
+                    <p class="text-slate-600 text-sm mb-6 flex-grow lang-en hidden">
+                        A full rig includes "Amp + Cab." The speaker cabinet (IR) aggressively rolls off high frequencies, killing the energy before it reaches the boundaries. Standalone pedals allow full-range energy to hit the Nyquist roof. A2's high-fidelity calculation backfires, throwing massive aliasing back into the audible spectrum.
+                    </p>
+                    <div class="relative h-24 bg-slate-100 rounded-xl overflow-hidden flex items-end px-4 gap-1">
+                        <div class="h-4/5 w-4 bg-slate-300 rounded-t"></div>
+                        <div class="h-3/4 w-4 bg-slate-300 rounded-t"></div>
+                        <div class="h-2/3 w-4 bg-slate-300 rounded-t"></div>
+                        <div class="h-full w-4 bg-orange-500 rounded-t shadow-lg"></div>
+                        <div class="h-full border-r-2 border-dashed border-red-400 absolute right-1/4 top-0"></div>
+                        <span class="absolute right-4 bottom-2 text-[10px] font-bold text-red-500 uppercase">Boundary</span>
+                    </div>
+                </div>
+
+                <div class="p-8 rounded-3xl glass-card flex flex-col">
+                    <h4 class="text-xl font-bold mb-4 text-slate-800 italic lang-jp">2. オーバーサンプリングの力技</h4>
+                    <h4 class="text-xl font-bold mb-4 text-slate-800 italic lang-en hidden">2. Brute Force of Oversampling</h4>
+                    
+                    <p class="text-slate-600 text-sm mb-6 flex-grow lang-jp">
+                        <code>NAM-Oversampler</code>はプラグイン内部でサンプリング周波数を8倍・16倍に引き上げ、ナイキスト天井を上空に退避させます。これにより歪み計算で発生した超高域がそのまま上空に抜け、ダウンサンプリング時にフィルターで綺麗にカットされます。
+                    </p>
+                    <p class="text-slate-600 text-sm mb-6 flex-grow lang-en hidden">
+                        The `NAM-Oversampler` elevates the internal sampling rate up to 8x or 16x, raising the Nyquist ceiling sky-high. High harmonics generated during non-linear distortion escape directly into this extended headroom and are cleanly discarded by the decimation filter during downsampling.
+                    </p>
+                    <div class="flex gap-4">
+                        <div class="flex-1 p-3 bg-slate-200 text-slate-600 rounded-lg text-center text-[10px]">
+                            <span class="block font-bold mb-1">Normal (1x)</span>
+                            <span class="lang-jp">天井が低く、エイリアスが可聴帯域へ激しく跳ね返る</span>
+                            <span class="lang-en hidden">Low ceiling. Aliasing ricochets heavily into audible band.</span>
+                        </div>
+                        <div class="flex-1 p-3 bg-emerald-600 text-white rounded-lg text-center text-[10px] font-bold">
+                            <span class="block opacity-70 mb-1">Oversampling (16x)</span>
+                            <span class="lang-jp">天井が高く、折り返さずに上空でフィルター除去</span>
+                            <span class="lang-en hidden">High ceiling. Ultrasonic artifacts easily filtered out.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="conclusion" class="p-12 rounded-[40px] bg-slate-900 text-white relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+            <div class="relative z-10 max-w-3xl">
+                <h3 class="text-3xl font-bold mb-6 lang-jp">結論：実測が示した「パラドックス」と「解決策」</h3>
+                <h3 class="text-3xl font-bold mb-6 lang-en hidden">Conclusion: The Paradox and the Solution</h3>
+                
+                <div class="space-y-6 text-slate-300 text-sm leading-relaxed lang-jp">
+                    <p>
+                        NAM A2は特定のノイズ（10kHz付近の定常的なリンギング）の排除には大成功したものの、<b>「過激な歪み×キャビ無し」という極限環境下</b>において、演奏者が最も嫌う「動的なキュイキュイ音（折り返しノイズ）」は悪化していました（ASR -24.49 dB）。
+                    </p>
+                    <p>
+                        しかし、実演検証において、<code>NAM-Oversampler (v1.5.2)</code>を適用し、<b>8x（ASR -52.78 dB）</b>、さらには<b>16x（ASR -62.10 dB）</b>までオーバーサンプリングをかけることで、この不協和音を物理的にほぼ完全消滅させられることが実証されました。
+                    </p>
+                    <p>
+                        また、5150フルリグの実測データからも、<b>8x（ASR -60.55 dB）</b>、<b>16x（ASR -67.19 dB）</b>と、オーバーサンプリングを施すことで元々のA1のクオリティ（-24.49 dB）をも遥かに凌駕する圧倒的なクリーン性能へと進化することが判明しました。
+                    </p>
+                    <p>
+                        なお、32xでは処理落ちが発生するため、演奏実用上は<b>8x〜16x</b>がクオリティとCPU負荷のベストバランスです。スペック上の流行に左右されず、このような実測アプローチによってこそ、最高のデジタルアンプサウンドを構築できます。
+                    </p>
+                </div>
+                <div class="space-y-6 text-slate-300 text-sm leading-relaxed lang-en hidden">
+                    <p>
+                        While NAM A2 successfully eliminated specific static ringing noise near 10kHz, in extreme setups like **extreme distortion without cabinet simulation**, the dynamic "sweep/chirp" aliasing noise—the type guitarists detest most—actually deteriorated (ASR -24.49 dB).
+                    </p>
+                    <p>
+                        However, empirical tests proved that utilizing `NAM-Oversampler (v1.5.2)` at **8x (ASR -52.78 dB)** and **16x (ASR -62.10 dB)** can physically suppress this annoying digital fizz down to near non-existence.
+                    </p>
+                    <p>
+                        Additionally, empirical data of the 5150 Full Rig demonstrated that introducing oversampling dramatically pushes the noise performance down to **8x (-60.55 dB)** and **16x (-67.19 dB)**, vastly outperforming even the baseline quality of A1 (-24.49 dB).
+                    </p>
+                    <p>
+                        Since 32x triggers buffer underruns, **8x to 16x** offers the golden balance of quality and CPU load. Guided by empirical measurements rather than spec-sheet trends, we can build the ultimate digital amp tones.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <footer class="pt-12 text-center text-slate-400 border-t border-slate-200">
+            <p class="text-[10px] max-w-2xl mx-auto italic">
+                Reference: Ryota Sato, Julius O. Smith III, "Aliasing Reduction in Neural Amp Modeling by Smoothing Activations," DAFx 2025. <br>
+                Experimental data verified using NAM-Oversampler v1.5.2 (DLC86) and ASR Analyzer (Referencing "NAM_OS_jikken.jpg").
+            </p>
+            <p class="mt-8 text-[10px]">© 2026 Isamu the Guitar. Verified with ASR Analyzer.</p>
+        </footer>
+
+    </main>
+
+    <script>
+        // Dual language dataset map
+        const data = {
+            rat: {
+                labels: {
+                    jp: ['A1', 'A2 Full', 'A2 Lite', 'A2 (OS 8x)', 'A2 (OS 16x)'],
+                    en: ['A1', 'A2 Full', 'A2 Lite', 'A2 (OS 8x)', 'A2 (OS 16x)']
+                },
+                values: [-62.26, -24.49, -28.86, -52.78, -62.10],
+                insight: {
+                    jp: "キャビのないRATペダルプロファイルでは、オーバーサンプリングなしのA2 Fullは-24.49dBと非常に劣悪です。しかし、8xで-52.78dB、16xで-62.10dBまで劇的にノイズが減少し、A1と同等のクリーンさを達成します。",
+                    en: "With the standalone RAT pedal (no cabinet IR), A2 Full without oversampling performs poorly at -24.49 dB ASR. However, applying 8x (-52.78 dB) or 16x (-62.10 dB) oversampling dramatically suppresses noise to A1 levels of cleanliness."
+                },
+                worst: "-24.49 dB",
+                metrics: {
+                    a1: "-62.26 dB",
+                    a2f: "-24.49 dB",
+                    a2l: "-28.86 dB",
+                    os: {
+                        jp: "-62.10 dB (16x)",
+                        en: "-62.10 dB (16x)"
+                    }
+                },
+                screenshots: [
+                    {
+                        id: 'rat_real',
+                        label_jp: 'RAT2 実機',
+                        label_en: 'RAT2 Hardware',
+                        file: 'RAT2_real.jpg',
+                        title_jp: 'ProCo RAT2 実機 (Real Hardware)',
+                        title_en: 'ProCo RAT2 Real Hardware',
+                        desc_jp: 'ASR: -40.61 dB。完全アナログ機材のため「跳ね返る折り返しノイズ」は一切存在せず、機材固有のアナログノイズフロアおよび偶数・奇数の自然な高調波のみが立ち上がっています。これこそが理想の基準点です。',
+                        desc_en: 'ASR: -40.61 dB. Being purely analog hardware, there is absolutely no digital folded-back aliasing. Only the inherent analog noise floor and natural harmonics arise. This represents our ultimate reference.'
+                    },
+                    {
+                        id: 'rat_a1',
+                        label_jp: 'A1 (Standard)',
+                        label_en: 'A1 (Standard)',
+                        file: 'RAT2_A1.jpg',
+                        title_jp: 'NAM A1 (Standard)',
+                        title_en: 'NAM A1 (Standard)',
+                        desc_jp: 'ASR: -27.85 dB。標準のA1アルゴリズムによるエミュレーション。実機と比べて若干ノイズフロアが高く見えますが、不自然なエイリアス交差線は極めて薄い状態をキープしています。',
+                        desc_en: 'ASR: -27.85 dB. Emulation via standard A1. While the noise floor is slightly higher than actual hardware, the unnatural aliasing cross-lines remain extremely faint.'
+                    },
+                    {
+                        id: 'rat_a2_full',
+                        label_jp: 'A2 Full (1x)',
+                        label_en: 'A2 Full (1x)',
+                        file: 'RAT2_A2_Full_normal.jpg',
+                        title_jp: 'NAM A2 Full (Oversampling OFF)',
+                        title_en: 'NAM A2 Full (Oversampling OFF)',
+                        desc_jp: 'ASR: -24.49 dB。オーバーサンプリングなし。ナイキスト周波数境界（一番上の天井）から斜めに折り返して下に落ちてくる「不協和な折り返しノイズの線」がスペクトログラム上にハッキリと無数に現れています。',
+                        desc_en: 'ASR: -24.49 dB. Oversampling OFF. Countless diagonal lines representing inharmonic aliased noise are clearly visible, sweeping back down from the Nyquist ceiling.'
+                    },
+                    {
+                        id: 'rat_os8',
+                        label_jp: 'A2 (OS 8x)',
+                        label_en: 'A2 (OS 8x)',
+                        file: 'RAT2_A2_Full_OSx8.jpg',
+                        title_jp: 'NAM A2 Full + NAM-Oversampler 8x',
+                        title_en: 'NAM A2 Full + NAM-Oversampler 8x',
+                        desc_jp: 'ASR: -52.78 dB。8倍オーバーサンプリング。天井が上空へ押し上げられたため、スペクトログラム上を埋め尽くしていた折り返しノイズ of 交差線が一気に薄くなり、可聴域への折り返しが激減しました。',
+                        desc_en: 'ASR: -52.78 dB. 8x Oversampling. Because the ceiling is raised, the cross-lines that once littered the spectrogram are thinned out, drastically reducing the foldback noise in the audible range.'
+                    },
+                    {
+                        id: 'rat_os16',
+                        label_jp: 'A2 (OS 16x)',
+                        label_en: 'A2 (OS 16x)',
+                        file: 'RAT2_A2_Full_OSx16.jpg',
+                        title_jp: 'NAM A2 Full + NAM-Oversampler 16x',
+                        title_en: 'NAM A2 Full + NAM-Oversampler 16x',
+                        desc_jp: 'ASR: -62.10 dB。16倍オーバーサンプリング。実機はおろか、A1をも凌駕する極限の低ノイズ性能を達成。可聴域内のノイズレベルはさらにクリーンになり、A2本来の音のなめらかさのみが残ります。',
+                        desc_en: 'ASR: -62.10 dB. 16x Oversampling. Achieves supreme noise performance that beats A1 and rivals hardware. The audible spectrum becomes even cleaner, retaining only A2\'s native fidelity.'
+                    }
+                ]
+            },
+            '5150': {
+                labels: {
+                    jp: ['A1', 'A2 Full', 'A2 Lite', 'A2 (OS 8x)', 'A2 (OS 16x)'],
+                    en: ['A1', 'A2 Full', 'A2 Lite', 'A2 (OS 8x)', 'A2 (OS 16x)']
+                },
+                values: [-24.49, -24.54, -27.85, -60.55, -67.19],
+                insight: {
+                    jp: "キャビネットIRによる高域遮断があっても、5150のA1/A2 Full自体のASRは-24.49dB前後と良好ではありません。しかしオーバーサンプリングをかけることで、8xで-60.55dB、16xで-67.19dBと、ベースモデルのクオリティを遥かに突き抜けた圧倒的なノイズフロアの低下を実現します。",
+                    en: "Even with cabinet IR filtering, the baseline ASR of 5150 A1 and A2 Full hovers around -24.49 dB. However, applying oversampling drastically lowers the noise to -60.55 dB at 8x and -67.19 dB at 16x, breaking past the baseline quality limits."
+                },
+                worst: "-24.49 dB",
+                metrics: {
+                    a1: "-24.49 dB",
+                    a2f: "-24.54 dB",
+                    a2l: "-27.85 dB",
+                    os: {
+                        jp: "-67.19 dB (16x)",
+                        en: "-67.19 dB (16x)"
+                    }
+                },
+                screenshots: [
+                    {
+                        id: '5150_a1',
+                        label_jp: 'A1 (Standard)',
+                        label_en: 'A1 (Standard)',
+                        file: 'NAM_5150_FulRig_A1.jpg',
+                        title_jp: 'Peavey 5150 FullRig A1',
+                        title_en: 'Peavey 5150 FullRig A1',
+                        desc_jp: 'ASR: -24.49 dB。標準のA1フルリグプロファイル。キャビネットIRの高域フィルタ効果により高域が綺麗に遮断されているものの、アンププロファイリング由来の基本倍音成分と折り返しノイズが競合している様子が確認できます。',
+                        desc_en: 'ASR: -24.49 dB. Standard A1 full rig profile. Though high frequencies decay via the cab IR, we can see competition between the core profile harmonics and underlying aliasing.'
+                    },
+                    {
+                        id: '5150_a2_full',
+                        label_jp: 'A2 Full',
+                        label_en: 'A2 Full',
+                        file: 'NAM_5150_FulRig_A2Full.jpg',
+                        title_jp: 'Peavey 5150 FullRig A2 Full',
+                        title_en: 'Peavey 5150 FullRig A2 Full',
+                        desc_jp: 'ASR: -24.54 dB。オーバーサンプリングなし。A1と同様にキャビを通ることで中域以上の可聴域のノイズは抑えられているものの、高次倍音の折り返し歪みが可聴域にほんのりと残留しています。',
+                        desc_en: 'ASR: -24.54 dB. Oversampling OFF. While mid-high audible noise is masked by the cabinet IR similar to A1, high-harmonic aliasing residue still lingers slightly in the audible spectrum.'
+                    },
+                    {
+                        id: '5150_a2_lite',
+                        label_jp: 'A2 Lite',
+                        label_en: 'A2 Lite',
+                        file: 'NAM_5150_FulRig_A2Lite.jpg',
+                        title_jp: 'Peavey 5150 FullRig A2 Lite',
+                        title_en: 'Peavey 5150 FullRig A2 Lite',
+                        desc_jp: 'ASR: -27.85 dB。A2 Fullに比べてモデルが縮小されたため、生成される高次エネルギーが物理的に適度に制限され、結果として折り返し雑音も3dB程度少なく抑えられています。',
+                        desc_en: 'ASR: -27.85 dB. A2 Lite (Slim). Since the model is structurally downscaled, the output energy of high-order harmonics is slightly restricted, suppressing aliased noise by about 3dB compared to Full.'
+                    },
+                    {
+                        id: '5150_os8',
+                        label_jp: 'A2 (OS 8x)',
+                        label_en: 'A2 (OS 8x)',
+                        file: 'NAM_5150_FulRig_A2Full_8x.jpg',
+                        title_jp: 'Peavey 5150 FullRig A2 Full + OS 8x',
+                        title_en: 'Peavey 5150 FullRig A2 Full + OS 8x',
+                        desc_jp: 'ASR: -60.55 dB。8倍オーバーサンプリング適用。歪み生成段の時点で折り返しノイズがほぼ完全に抑制され、キャビIRの減衰効果も相まって、ノイズレベルが劇的に低減。-60 dBを超える超静粛動作を達成しています。',
+                        desc_en: 'ASR: -60.55 dB. 8x Oversampling enabled. Foldback noise is suppressed at the distortion stage. In combination with the cab IR decay, the noise level drops dramatically, breaking past the -60 dB barrier.'
+                    },
+                    {
+                        id: '5150_os16',
+                        label_jp: 'A2 (OS 16x)',
+                        label_en: 'A2 (OS 16x)',
+                        file: 'NAM_5150_FulRig_A2Full_16x.jpg',
+                        title_jp: 'Peavey 5150 FullRig A2 Full + OS 16x',
+                        title_en: 'Peavey 5150 FullRig A2 Full + OS 16x',
+                        desc_jp: 'ASR: -67.19 dB。16倍オーバーサンプリング適用。測定グラフ上の不要な交差ノイズラインがさらに減少。元々のA1の倍音クオリティをも遥かに突き抜けた、異次元にクリーンな究極のハイゲインサウンドを提供します。',
+                        desc_en: 'ASR: -67.19 dB. 16x Oversampling enabled. Extraneous aliasing cross-lines are further reduced on the spectrogram. This provides an incredibly clean high-gain sound that far surpasses baseline A1.'
+                    }
+                ]
+            }
+        };
+
+        let currentChart = null;
+        let activeTarget = 'rat';
+        let activeScreenshotId = '';
+        let currentLang = 'jp'; // Default language
+
+        // Swaps dynamic screenshots and metadata
+        function setScreenshot(id) {
+            const currentData = data[activeTarget];
+            const screenshot = currentData.screenshots.find(s => s.id === id);
+            if (!screenshot) return;
+
+            activeScreenshotId = id;
+
+            const img = document.getElementById('viewer-img');
+            const loading = document.getElementById('viewer-loading');
+            loading.classList.remove('opacity-0');
+
+            img.style.opacity = '0.3';
+            img.src = screenshot.file;
+
+            img.onload = () => {
+                img.style.opacity = '1';
+                loading.classList.add('opacity-0');
+            };
+
+            // Switch metadata titles and descriptions based on active language
+            document.getElementById('viewer-title').innerText = currentLang === 'jp' ? screenshot.title_jp : screenshot.title_en;
+            document.getElementById('viewer-desc').innerText = currentLang === 'jp' ? screenshot.desc_jp : screenshot.desc_en;
+            document.getElementById('viewer-filename').innerText = screenshot.file;
+
+            // Highlight selected button
+            const buttons = document.querySelectorAll('.viewer-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('data-id') === id) {
+                    btn.classList.add('bg-orange-500', 'text-white', 'border-orange-500');
+                    btn.classList.remove('bg-slate-800', 'text-slate-400', 'border-slate-700');
+                } else {
+                    btn.classList.remove('bg-orange-500', 'text-white', 'border-orange-500');
+                    btn.classList.add('bg-slate-800', 'text-slate-400', 'border-slate-700');
+                }
+            });
+        }
+
+        function updateViewerControls() {
+            const container = document.getElementById('viewer-controls');
+            container.innerHTML = ''; 
+
+            const screenshots = data[activeTarget].screenshots;
+            screenshots.forEach(s => {
+                const button = document.createElement('button');
+                button.className = "viewer-btn px-3 py-1 text-xs font-semibold rounded-lg border transition-all duration-200 bg-slate-800 text-slate-400 border-slate-700 hover:border-orange-400 hover:text-white";
+                button.setAttribute('data-id', s.id);
+                button.innerText = currentLang === 'jp' ? s.label_jp : s.label_en;
+                button.onclick = () => setScreenshot(s.id);
+                container.appendChild(button);
+            });
+
+            // Fallback first screenshot selection
+            if (screenshots.length > 0) {
+                setScreenshot(screenshots[0].id);
+            }
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('asrChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.rat.labels[currentLang],
+                    datasets: [{
+                        label: 'ASR (dB)',
+                        data: data.rat.values,
+                        backgroundColor: ['#475569', '#f97316', '#94a3b8', '#10b981', '#059669'],
+                        borderRadius: 8,
+                        barThickness: 28
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `ASR: ${context.raw} dB`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            min: -70,
+                            max: 0,
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { font: { size: 12, weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+
+            updateViewerControls();
+        }
+
+        function switchTarget(target) {
+            activeTarget = target;
+            const btnRat = document.getElementById('btn-rat');
+            const btn5150 = document.getElementById('btn-5150');
+            const osCard = document.getElementById('metric-os-card');
+
+            if (target === 'rat') {
+                btnRat.classList.add('bg-slate-800', 'text-white', 'border-slate-800');
+                btn5150.classList.remove('bg-slate-800', 'text-white', 'border-slate-800');
+                osCard.style.opacity = '1';
+            } else {
+                btn5150.classList.add('bg-slate-800', 'text-white', 'border-slate-800');
+                btnRat.classList.remove('bg-slate-800', 'text-white', 'border-slate-800');
+                osCard.style.opacity = '1'; // 5150でもOversampling測定値があるため、不透明に変更
+            }
+
+            // Repopulate dynamic chart datasets
+            currentChart.data.labels = data[target].labels[currentLang];
+            currentChart.data.datasets[0].data = data[target].values;
+            
+            // 5150もRATもどちらも5項目（OSx8, OSx16含む）になったため、一貫して5色を適用
+            currentChart.data.datasets[0].backgroundColor = ['#475569', '#f97316', '#94a3b8', '#10b981', '#059669'];
+
+            currentChart.update();
+
+            // Refresh text boxes
+            document.getElementById('insight-text').innerText = data[target].insight[currentLang];
+            document.getElementById('worst-val').innerText = data[target].worst;
+            document.getElementById('val-a1').innerText = data[target].metrics.a1;
+            document.getElementById('val-a2f').innerText = data[target].metrics.a2f;
+            document.getElementById('val-a2l').innerText = data[target].metrics.a2l;
+            document.getElementById('val-os').innerText = typeof data[target].metrics.os === 'object' ? data[target].metrics.os[currentLang] : data[target].metrics.os;
+
+            updateViewerControls();
+        }
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            
+            // Toggle language buttons style
+            const btnJp = document.getElementById('lang-btn-jp');
+            const btnEn = document.getElementById('lang-btn-en');
+            if (lang === 'jp') {
+                btnJp.className = "px-3 py-1 text-xs font-bold rounded-md transition-all bg-white text-slate-800 shadow-sm";
+                btnEn.className = "px-3 py-1 text-xs font-bold rounded-md transition-all text-slate-500 hover:text-slate-800";
+            } else {
+                btnEn.className = "px-3 py-1 text-xs font-bold rounded-md transition-all bg-white text-slate-800 shadow-sm";
+                btnJp.className = "px-3 py-1 text-xs font-bold rounded-md transition-all text-slate-500 hover:text-slate-800";
+            }
+
+            // Hide and show language classes
+            document.querySelectorAll('.lang-jp').forEach(el => {
+                if (lang === 'jp') el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            });
+            document.querySelectorAll('.lang-en').forEach(el => {
+                if (lang === 'en') el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            });
+
+            // Update charts and controls text parameters
+            if (currentChart) {
+                currentChart.data.labels = data[activeTarget].labels[currentLang];
+                currentChart.update();
+            }
+
+            switchTarget(activeTarget);
+        }
+
+        window.onload = initChart;
+    </script>
+
+</body>
+</html>

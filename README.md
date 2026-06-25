@@ -1,5 +1,7 @@
 # NAM ASR Analyzer
 
+👉 **[Live Interactive Verification Report (JP/EN)](https://isamutheguitar.github.io/NAM-ASR-Analyzer/)**
+
 A custom script designed to measure and visualize the **Aliasing-to-Signal Ratio (ASR)** in non-linear digital audio processors (such as Neural Amp Modeler) using the Log Sine Sweep method.
 
 ## 🛠️ Technical Features & Implementation Details
