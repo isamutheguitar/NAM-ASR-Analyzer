@@ -39,13 +39,14 @@ This analyzer was successfully utilized to verify the performance of [NAM-Oversa
 
 ## 📚 Acknowledgments & References
 
-The core concept and definition of the **Aliasing-to-Signal Ratio (ASR)** used in this script are heavily inspired by and based on the pioneering research in the following paper:
+The core concept of analyzing aliasing distortion in this context was heavily inspired by the following research:
 
-* **Paper:** *“Prediction of Aliasing Distortion in Digital Non-linear Audio Effects”*
-* **Authors:** Balázs Bank and Stefano D'Angelo
-* **Link:** [Available via ResearchGate](https://www.researchgate.net/publication/308381812_Prediction_of_aliasing_distortion_in_digital_non-linear_audio_effects)
+* **Paper:** *“Aliasing Reduction in Neural Amp Modeling by Smoothing Activations”*
+* **Authors:** Ryota Sato, Julius O. Smith III
+* **Conference:** Proceedings of the International Conference on Digital Audio Effects (DAFx), 2025
+* **Link:** [DAFx25_paper_50.pdf](https://dafx25.dii.univpm.it/wp-content/uploads/2025/09/DAFx25_paper_50.pdf)
 
-We would like to express our deepest gratitude to the authors for their invaluable contribution to the field of digital audio signal processing, which made the quantification of this analyzer possible.
+We would like to express our deepest gratitude to the authors for their invaluable contribution to the field of digital audio signal processing and Neural Amp Modeling.
 
 ---
 
